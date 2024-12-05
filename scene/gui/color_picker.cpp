@@ -1308,11 +1308,11 @@ void ColorPicker::_hsv_draw(int p_which, Control *c) {
 			Vector<Point2> points;
 			Vector<Color> colors;
 			Color col;
-			col.set_ok_hsl(h, s, 1);
+			col.set_ok_hsl(ok_hsl_h, ok_hsl_s, 1);
 			Color col2;
-			col2.set_ok_hsl(h, s, 0.5);
+			col2.set_ok_hsl(ok_hsl_h, ok_hsl_s, 0.5);
 			Color col3;
-			col3.set_ok_hsl(h, s, 0);
+			col3.set_ok_hsl(ok_hsl_h, ok_hsl_s, 0);
 			points.resize(6);
 			colors.resize(6);
 			points.set(0, Vector2(c->get_size().x, 0));
@@ -1328,8 +1328,8 @@ void ColorPicker::_hsv_draw(int p_which, Control *c) {
 			colors.set(4, col2);
 			colors.set(5, col);
 			c->draw_polygon(points, colors);
-			int y = c->get_size().y - c->get_size().y * CLAMP(v, 0, 1);
-			col.set_ok_hsl(h, 1, v);
+			int y = c->get_size().y - c->get_size().y * CLAMP(ok_hsl_l, 0, 1);
+			col.set_ok_hsl(ok_hsl_h, 1, ok_hsl_l);
 			c->draw_line(Point2(0, y), Point2(c->get_size().x, y), col.inverted());
 		} else if (actual_shape == SHAPE_VHS_CIRCLE) {
 			Vector<Point2> points;
@@ -1693,7 +1693,7 @@ void ColorPicker::_w_input(const Ref<InputEvent> &p_event) {
 				h = CLAMP(h + color_change / 360.0, 0, 1);
 			} else if (actual_shape == SHAPE_VHS_CIRCLE || actual_shape == SHAPE_OKHSL_CIRCLE) {
 				v = CLAMP(v - color_change / 100.0, 0, 1);
-				ok_hsl_l = v;
+				ok_hsl_l = CLAMP(ok_hsl_l - color_change / 100.0, 0, 1);
 			}
 
 			accept_event();
