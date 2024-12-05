@@ -121,6 +121,7 @@ private:
 	Vector2i hsv_keyboard_picker_cursor_position;
 	float echo_multiplier = 1;
 	float echo_multiplier_step = 1.1;
+	bool rotate_next_echo_event = false;
 	static const int MODE_BUTTON_COUNT = 3;
 
 	bool slider_theme_modified = true;
@@ -274,8 +275,9 @@ private:
 	void _sample_draw();
 	void _hsv_draw(int p_which, Control *c);
 	void _slider_draw(int p_which);
-	int get_wheel_h_change(Vector2 color_change_vector);
-	float get_h_on_wheel(Vector2 color_change_vector);
+	int get_edge_h_change(const Vector2 &p_color_change_vector);
+	float get_h_on_circle_edge(const Vector2 &p_color_change_vector);
+	float get_h_on_wheel(const Vector2 &p_color_change_vector);
 
 	void _uv_input(const Ref<InputEvent> &p_event, Control *c);
 	void _w_input(const Ref<InputEvent> &p_event);

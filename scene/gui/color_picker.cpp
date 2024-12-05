@@ -1374,49 +1374,59 @@ void ColorPicker::_slider_draw(int p_which) {
 	}
 }
 
-int ColorPicker::get_wheel_h_change(Vector2 color_change_vector) {
+int ColorPicker::get_edge_h_change(const Vector2 &p_color_change_vector) {
 	int h_change = 0;
 
 	if (h > 0 && h < 0.5) {
-		h_change -= color_change_vector.x;
+		h_change -= p_color_change_vector.x;
 	} else if (h > 0.5 && h < 1) {
-		h_change += color_change_vector.x;
+		h_change += p_color_change_vector.x;
 	}
 
 	if (h > 0.25 && h < 0.75) {
-		h_change -= color_change_vector.y;
+		h_change -= p_color_change_vector.y;
 	} else if (h < 0.25 || h > 0.75) {
-		h_change += color_change_vector.y;
+		h_change += p_color_change_vector.y;
 	}
 
 	return h_change;
 }
 
-float ColorPicker::get_h_on_wheel(Vector2 color_change_vector) {
-	int h_change = 0;
-	if (h > 0 && h < 0.5) {
-		h_change -= color_change_vector.x;
-	} else if (h > 0.5 && h < 1) {
-		h_change += color_change_vector.x;
-	}
-	if (h > 0.25 && h < 0.75) {
-		h_change -= color_change_vector.y;
-	} else if (h < 0.25 || h > 0.75) {
-		h_change += color_change_vector.y;
-	}
+float ColorPicker::get_h_on_circle_edge(const Vector2 &p_color_change_vector) {
+	int h_change = get_edge_h_change(p_color_change_vector);
 
 	float target_h = Math::wrapf(h + h_change / 360.0, 0, 1);
 	int current_quarter = h * 4;
 	int future_quarter = target_h * 4;
-	if (color_change_vector.y > 0 && ((future_quarter == 0 && current_quarter == 1) || (future_quarter == 1 && current_quarter == 0))) {
+	if (p_color_change_vector.y > 0 && ((future_quarter == 0 && current_quarter == 1) || (future_quarter == 1 && current_quarter == 0))) {
 		target_h = 0.25f;
-	} else if (color_change_vector.y < 0 && ((future_quarter == 2 && current_quarter == 3) || (future_quarter == 3 && current_quarter == 2))) {
+	} else if (p_color_change_vector.y < 0 && ((future_quarter == 2 && current_quarter == 3) || (future_quarter == 3 && current_quarter == 2))) {
 		target_h = 0.75f;
-	} else if (color_change_vector.x < 0 && ((future_quarter == 1 && current_quarter == 2) || (future_quarter == 2 && current_quarter == 1))) {
+	} else if (p_color_change_vector.x < 0 && ((future_quarter == 1 && current_quarter == 2) || (future_quarter == 2 && current_quarter == 1))) {
 		target_h = 0.5f;
-	} else if (color_change_vector.x > 0 && ((future_quarter == 3 && current_quarter == 0) || (future_quarter == 0 && current_quarter == 3))) {
+	} else if (p_color_change_vector.x > 0 && ((future_quarter == 3 && current_quarter == 0) || (future_quarter == 0 && current_quarter == 3))) {
 		target_h = 0;
 	}
+	return target_h;
+}
+
+float ColorPicker::get_h_on_wheel(const Vector2 &p_color_change_vector) {
+	int h_change = get_edge_h_change(p_color_change_vector);
+
+	float target_h = Math::wrapf(h + h_change / 360.0, 0, 1);
+	int current_quarter = h * 4;
+	int future_quarter = target_h * 4;
+
+	if (p_color_change_vector.y > 0 && ((future_quarter == 0 && current_quarter == 1) || (future_quarter == 1 && current_quarter == 0))) {
+		rotate_next_echo_event = !rotate_next_echo_event;
+	} else if (p_color_change_vector.y < 0 && ((future_quarter == 2 && current_quarter == 3) || (future_quarter == 3 && current_quarter == 2))) {
+		rotate_next_echo_event = !rotate_next_echo_event;
+	} else if (p_color_change_vector.x < 0 && ((future_quarter == 1 && current_quarter == 2) || (future_quarter == 2 && current_quarter == 1))) {
+		rotate_next_echo_event = !rotate_next_echo_event;
+	} else if (p_color_change_vector.x > 0 && ((future_quarter == 3 && current_quarter == 0) || (future_quarter == 0 && current_quarter == 3))) {
+		rotate_next_echo_event = !rotate_next_echo_event;
+	}
+
 	return target_h;
 }
 
@@ -1577,7 +1587,7 @@ void ColorPicker::_uv_input(const Ref<InputEvent> &p_event, Control *c) {
 					h = ((rad >= 0) ? rad : (Math_TAU + rad)) / Math_TAU;
 					s = CLAMP(dist / center.x, 0, 1);
 				} else {
-					h = get_h_on_wheel(color_change_vector);
+					h = get_h_on_circle_edge(color_change_vector);
 					hsv_keyboard_picker_cursor_position = Vector2i();
 				}
 
@@ -1592,6 +1602,12 @@ void ColorPicker::_uv_input(const Ref<InputEvent> &p_event, Control *c) {
 					s = CLAMP(s + color_change_vector.x / 100.0, 0, 1);
 					v = CLAMP(v - color_change_vector.y / 100.0, 0, 1);
 				} else if (c == wheel_h_focus_display) {
+					if (p_event->is_echo() && rotate_next_echo_event) {
+						color_change_vector *= -1;
+					} else {
+						rotate_next_echo_event = false;
+					}
+
 					h = get_h_on_wheel(color_change_vector);
 				}
 			}
