@@ -122,6 +122,10 @@ private:
 	float echo_multiplier = 1;
 	float echo_multiplier_step = 1.1;
 	bool rotate_next_echo_event = false;
+
+	const float DEFAULT_GAMEPAD_EVENT_DELAY_MS = 1.0 / 60;
+	const float GAMEPAD_EVENT_REPEAT_RATE_MS = 1.0 / 60;
+	float gamepad_event_delay_ms = DEFAULT_GAMEPAD_EVENT_DELAY_MS;
 	static const int MODE_BUTTON_COUNT = 3;
 
 	bool slider_theme_modified = true;
@@ -278,8 +282,10 @@ private:
 	int get_edge_h_change(const Vector2 &p_color_change_vector);
 	float get_h_on_circle_edge(const Vector2 &p_color_change_vector);
 	float get_h_on_wheel(const Vector2 &p_color_change_vector);
+	void update_uv_cursor(Vector2 &color_change_vector, bool is_echo);
 
 	void _uv_input(const Ref<InputEvent> &p_event, Control *c);
+	void update_w_cursor(float color_change, bool is_echo);
 	void _w_input(const Ref<InputEvent> &p_event);
 	void _slider_or_spin_input(const Ref<InputEvent> &p_event);
 	void _line_edit_input(const Ref<InputEvent> &p_event);

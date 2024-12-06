@@ -149,11 +149,35 @@ void ColorPicker::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_INTERNAL_PROCESS: {
-			if (!is_picking_color) {
+			if (is_picking_color) {
+				set_pick_color(DisplayServer::get_singleton()->screen_get_pixel(DisplayServer::get_singleton()->mouse_get_position()));
+			}
+
+			Input *input = Input::get_singleton();
+			bool is_picker_focused = uv_edit->has_focus() || wheel_uv->has_focus() || wheel_h_focus_display->has_focus();
+
+			if (input->is_action_just_released("ui_left") ||
+					input->is_action_just_released("ui_right") ||
+					input->is_action_just_released("ui_up") ||
+					input->is_action_just_released("ui_down")) {
+				gamepad_event_delay_ms = DEFAULT_GAMEPAD_EVENT_DELAY_MS;
+				echo_multiplier = 1;
+				accept_event();
+				set_process_internal(false);
 				return;
 			}
-			set_pick_color(DisplayServer::get_singleton()->screen_get_pixel(DisplayServer::get_singleton()->mouse_get_position()));
-		}
+
+			gamepad_event_delay_ms -= get_process_delta_time();
+			if (gamepad_event_delay_ms <= 0) {
+				gamepad_event_delay_ms = GAMEPAD_EVENT_REPEAT_RATE_MS + gamepad_event_delay_ms;
+				Vector2 color_change_vector = input->get_vector("ui_left", "ui_right", "ui_up", "ui_down");
+				if (is_picker_focused) {
+					update_uv_cursor(color_change_vector, true);
+				} else if (w_edit->has_focus()) {
+					update_w_cursor(color_change_vector.y, true);
+				}
+			}
+		} break;
 	}
 }
 
@@ -1430,6 +1454,72 @@ float ColorPicker::get_h_on_wheel(const Vector2 &p_color_change_vector) {
 	return target_h;
 }
 
+void ColorPicker::update_uv_cursor(Vector2 &color_change_vector, bool is_echo) {
+	PickerShapeType actual_shape = _get_actual_shape();
+	echo_multiplier = is_echo ? CLAMP(echo_multiplier * echo_multiplier_step, 1, 25) : 1;
+
+	if (!color_change_vector.is_zero_approx()) {
+		color_change_vector *= echo_multiplier;
+
+		if (actual_shape == SHAPE_HSV_RECTANGLE) {
+			s = CLAMP(s + color_change_vector.x / 100.0, 0, 1);
+			v = CLAMP(v - color_change_vector.y / 100.0, 0, 1);
+		} else if (actual_shape == SHAPE_VHS_CIRCLE || actual_shape == SHAPE_OKHSL_CIRCLE) {
+			Vector2 center = wheel_uv->get_size() / 2.0;
+
+			// HACK: It's a hack, as it messes up if I calculate it this way always.
+			if (hsv_keyboard_picker_cursor_position == Vector2i() || Math::is_equal_approx(s, 1)) {
+				hsv_keyboard_picker_cursor_position.x = center.x + (center.x * Math::cos((actual_shape == SHAPE_OKHSL_CIRCLE ? ok_hsl_h : h) * Math_TAU) * s);
+				hsv_keyboard_picker_cursor_position.y = center.y + (center.y * Math::sin((actual_shape == SHAPE_OKHSL_CIRCLE ? ok_hsl_h : h) * Math_TAU) * s);
+			}
+
+			Vector2i potential_cursor_position = hsv_keyboard_picker_cursor_position + color_change_vector;
+			real_t potential_new_cursor_distance = center.distance_to(potential_cursor_position);
+			real_t dist_pre = center.distance_to(hsv_keyboard_picker_cursor_position);
+			if (s < 1 || potential_new_cursor_distance < dist_pre) {
+				hsv_keyboard_picker_cursor_position += color_change_vector;
+				real_t dist = center.distance_to(hsv_keyboard_picker_cursor_position);
+				real_t rad = center.angle_to_point(hsv_keyboard_picker_cursor_position);
+				h = ((rad >= 0) ? rad : (Math_TAU + rad)) / Math_TAU;
+				s = CLAMP(dist / center.x, 0, 1);
+			} else {
+				h = get_h_on_circle_edge(color_change_vector);
+				hsv_keyboard_picker_cursor_position = Vector2i();
+			}
+
+			ok_hsl_h = h;
+			ok_hsl_s = s;
+
+			if (Math::is_equal_approx(s, 1)) {
+				hsv_keyboard_picker_cursor_position = Vector2i();
+			}
+		} else if (actual_shape == SHAPE_HSV_WHEEL) {
+			if (wheel_uv->has_focus()) {
+				s = CLAMP(s + color_change_vector.x / 100.0, 0, 1);
+				v = CLAMP(v - color_change_vector.y / 100.0, 0, 1);
+			} else if (wheel_h_focus_display->has_focus()) {
+				if (is_echo && rotate_next_echo_event) {
+					color_change_vector *= -1;
+				} else {
+					rotate_next_echo_event = false;
+				}
+
+				h = get_h_on_wheel(color_change_vector);
+			}
+		}
+
+		_copy_hsv_to_color();
+		last_color = color;
+		set_pick_color(color);
+
+		emit_signal(SNAME("color_changed"), color);
+	} else {
+		echo_multiplier = 1;
+	}
+
+	accept_event();
+}
+
 void ColorPicker::_uv_input(const Ref<InputEvent> &p_event, Control *c) {
 	Ref<InputEventMouseButton> bev = p_event;
 	PickerShapeType actual_shape = _get_actual_shape();
@@ -1542,86 +1632,47 @@ void ColorPicker::_uv_input(const Ref<InputEvent> &p_event, Control *c) {
 		}
 	}
 
-	// TODO: Is it better to cast and check it or to not check it and get vector?
-	Ref<InputEventKey> kev = p_event;
-	Ref<InputEventJoypadButton> jbev = p_event;
-	Ref<InputEventJoypadMotion> jmev = p_event;
+	Ref<InputEventJoypadMotion> joypadmotion_event = p_event;
+	Ref<InputEventJoypadButton> joypadbutton_event = p_event;
+	bool is_joypad_event = (joypadmotion_event.is_valid() || joypadbutton_event.is_valid());
+	bool is_echo = p_event->is_echo();
 
-	if (kev.is_valid() || jbev.is_valid() || jmev.is_valid()) {
-		// TODO: Consider adding new ui actions specific to ColorPicker, like the ones used for LineEdit.
-		Vector2 color_change_vector;
-		if (p_event->is_action_pressed("ui_left", true)) {
-			color_change_vector.x -= 1;
-		} else if (p_event->is_action_pressed("ui_right", true)) {
-			color_change_vector.x += 1;
-		} else if (p_event->is_action_pressed("ui_up", true)) {
-			color_change_vector.y -= 1;
-		} else if (p_event->is_action_pressed("ui_down", true)) {
-			color_change_vector.y += 1;
+	if (p_event->is_action_pressed("ui_left", true) ||
+			p_event->is_action_pressed("ui_right", true) ||
+			p_event->is_action_pressed("ui_up", true) ||
+			p_event->is_action_pressed("ui_down", true)) {
+		if (is_joypad_event) {
+			set_process_internal(true);
 		}
 
-		echo_multiplier = CLAMP(echo_multiplier * (p_event->is_echo() ? echo_multiplier_step : 1), 1, 25);
-
-		if (!color_change_vector.is_zero_approx()) {
-			color_change_vector *= echo_multiplier;
-
-			if (actual_shape == SHAPE_HSV_RECTANGLE) {
-				s = CLAMP(s + color_change_vector.x / 100.0, 0, 1);
-				v = CLAMP(v - color_change_vector.y / 100.0, 0, 1);
-			} else if (actual_shape == SHAPE_VHS_CIRCLE || actual_shape == SHAPE_OKHSL_CIRCLE) {
-				Vector2 center = c->get_size() / 2.0;
-
-				// HACK: It's a hack, as it messes up if I calculate it this way always.
-				if (hsv_keyboard_picker_cursor_position == Vector2i() || Math::is_equal_approx(s, 1)) {
-					hsv_keyboard_picker_cursor_position.x = center.x + (center.x * Math::cos((actual_shape == SHAPE_OKHSL_CIRCLE ? ok_hsl_h : h) * Math_TAU) * s);
-					hsv_keyboard_picker_cursor_position.y = center.y + (center.y * Math::sin((actual_shape == SHAPE_OKHSL_CIRCLE ? ok_hsl_h : h) * Math_TAU) * s);
-				}
-
-				Vector2i potential_cursor_position = hsv_keyboard_picker_cursor_position + color_change_vector;
-				real_t potential_new_cursor_distance = center.distance_to(potential_cursor_position);
-				real_t dist_pre = center.distance_to(hsv_keyboard_picker_cursor_position);
-				if (s < 1 || potential_new_cursor_distance < dist_pre) {
-					hsv_keyboard_picker_cursor_position += color_change_vector;
-					real_t dist = center.distance_to(hsv_keyboard_picker_cursor_position);
-					real_t rad = center.angle_to_point(hsv_keyboard_picker_cursor_position);
-					h = ((rad >= 0) ? rad : (Math_TAU + rad)) / Math_TAU;
-					s = CLAMP(dist / center.x, 0, 1);
-				} else {
-					h = get_h_on_circle_edge(color_change_vector);
-					hsv_keyboard_picker_cursor_position = Vector2i();
-				}
-
-				ok_hsl_h = h;
-				ok_hsl_s = s;
-
-				if (Math::is_equal_approx(s, 1)) {
-					hsv_keyboard_picker_cursor_position = Vector2i();
-				}
-			} else if (actual_shape == SHAPE_HSV_WHEEL) {
-				if (c == wheel_uv) {
-					s = CLAMP(s + color_change_vector.x / 100.0, 0, 1);
-					v = CLAMP(v - color_change_vector.y / 100.0, 0, 1);
-				} else if (c == wheel_h_focus_display) {
-					if (p_event->is_echo() && rotate_next_echo_event) {
-						color_change_vector *= -1;
-					} else {
-						rotate_next_echo_event = false;
-					}
-
-					h = get_h_on_wheel(color_change_vector);
-				}
-			}
-
-			accept_event();
-			_copy_hsv_to_color();
-			last_color = color;
-			set_pick_color(color);
-
-			emit_signal(SNAME("color_changed"), color);
-		} else {
-			echo_multiplier = 1;
-		}
+		Vector2 color_change_vector = Input::get_singleton()->get_vector("ui_left", "ui_right", "ui_up", "ui_down");
+		update_uv_cursor(color_change_vector, is_echo);
 	}
+}
+
+void ColorPicker::update_w_cursor(float color_change, bool is_echo) {
+	PickerShapeType actual_shape = _get_actual_shape();
+	echo_multiplier = is_echo ? CLAMP(echo_multiplier * echo_multiplier_step, 1, 25) : 1;
+
+	if (!Math::is_zero_approx(color_change)) {
+		color_change *= echo_multiplier;
+		if (actual_shape == SHAPE_HSV_RECTANGLE) {
+			h = CLAMP(h + color_change / 360.0, 0, 1);
+		} else if (actual_shape == SHAPE_VHS_CIRCLE || actual_shape == SHAPE_OKHSL_CIRCLE) {
+			v = CLAMP(v - color_change / 100.0, 0, 1);
+			ok_hsl_l = CLAMP(ok_hsl_l - color_change / 100.0, 0, 1);
+		}
+
+		_copy_hsv_to_color();
+		last_color = color;
+		set_pick_color(color);
+
+		emit_signal(SNAME("color_changed"), color);
+	} else {
+		echo_multiplier = 1;
+	}
+
+	accept_event();
 }
 
 void ColorPicker::_w_input(const Ref<InputEvent> &p_event) {
@@ -1677,34 +1728,21 @@ void ColorPicker::_w_input(const Ref<InputEvent> &p_event) {
 		}
 	}
 
-	// TODO: Is it better to cast and check it or to not check it and get axis?
-	Ref<InputEventKey> kev = p_event;
-	Ref<InputEventJoypadButton> jbev = p_event;
-	Ref<InputEventJoypadMotion> jmev = p_event;
+	Ref<InputEventJoypadMotion> joypadmotion_event = p_event;
+	Ref<InputEventJoypadButton> joypadbutton_event = p_event;
+	bool is_joypad_event = (joypadmotion_event.is_valid() || joypadbutton_event.is_valid());
+	bool is_echo = p_event->is_echo();
 
-	if (kev.is_valid() || jbev.is_valid() || jmev.is_valid()) {
-		// TODO: Consider adding new ui actions specific to ColorPicker, like the ones used for LineEdit.
-		float color_change = Input::get_singleton()->get_axis("ui_up", "ui_down");
-
-		echo_multiplier = CLAMP(echo_multiplier * (p_event->is_echo() ? echo_multiplier_step : 1), 1, 25);
-		if (!Math::is_zero_approx(color_change)) {
-			color_change *= echo_multiplier;
-			if (actual_shape == SHAPE_HSV_RECTANGLE) {
-				h = CLAMP(h + color_change / 360.0, 0, 1);
-			} else if (actual_shape == SHAPE_VHS_CIRCLE || actual_shape == SHAPE_OKHSL_CIRCLE) {
-				v = CLAMP(v - color_change / 100.0, 0, 1);
-				ok_hsl_l = CLAMP(ok_hsl_l - color_change / 100.0, 0, 1);
-			}
-
-			accept_event();
-			_copy_hsv_to_color();
-			last_color = color;
-			set_pick_color(color);
-
-			emit_signal(SNAME("color_changed"), color);
-		} else {
-			echo_multiplier = 1;
+	if (p_event->is_action_pressed("ui_left", true) ||
+			p_event->is_action_pressed("ui_right", true) ||
+			p_event->is_action_pressed("ui_up", true) ||
+			p_event->is_action_pressed("ui_down", true)) {
+		if (is_joypad_event) {
+			set_process_internal(true);
 		}
+
+		float color_change = Input::get_singleton()->get_axis("ui_up", "ui_down");
+		update_w_cursor(color_change, is_echo);
 	}
 }
 
