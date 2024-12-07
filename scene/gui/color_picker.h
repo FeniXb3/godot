@@ -126,6 +126,7 @@ private:
 	const float DEFAULT_GAMEPAD_EVENT_DELAY_MS = 1.0 / 60;
 	const float GAMEPAD_EVENT_REPEAT_RATE_MS = 1.0 / 60;
 	float gamepad_event_delay_ms = DEFAULT_GAMEPAD_EVENT_DELAY_MS;
+	bool cursor_editing = false;
 	static const int MODE_BUTTON_COUNT = 3;
 
 	bool slider_theme_modified = true;
@@ -238,6 +239,7 @@ private:
 
 		Ref<StyleBox> picker_focus_rectangle;
 		Ref<StyleBox> picker_focus_circle;
+		Color focused_not_editing_cursor_color;
 		Ref<Texture2D> screen_picker;
 		Ref<Texture2D> expanded_arrow;
 		Ref<Texture2D> folded_arrow;
@@ -283,6 +285,7 @@ private:
 	float get_h_on_circle_edge(const Vector2 &p_color_change_vector);
 	float get_h_on_wheel(const Vector2 &p_color_change_vector);
 	void update_uv_cursor(Vector2 &color_change_vector, bool is_echo);
+	void update_cursor_editing(const Ref<InputEvent> &p_event, Control *c);
 
 	void _uv_input(const Ref<InputEvent> &p_event, Control *c);
 	void update_w_cursor(float color_change, bool is_echo);
@@ -388,6 +391,8 @@ public:
 	void set_focus_on_line_edit();
 	void set_focus_on_picker_shape();
 
+	void _picker_shape_focus_entered();
+	void _picker_shape_focus_exited();
 	ColorPicker();
 	~ColorPicker();
 };

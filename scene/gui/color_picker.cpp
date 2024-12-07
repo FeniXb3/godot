@@ -65,6 +65,12 @@ void ColorPicker::_notification(int p_what) {
 				btn_pick->set_tooltip_text(ETR("Pick a color from the application window."));
 				btn_pick->connect(SceneStringName(pressed), callable_mp(this, &ColorPicker::_pick_button_pressed_legacy));
 			}
+
+			// In HSV Wheel shape the wheel is around the rectangle and the engine cannot automatically select
+			// the square while pressing ui_up to change focused control from the wheel.
+			wheel_h_focus_display->set_focus_neighbor(SIDE_TOP, wheel_uv->get_path());
+			wheel_uv->set_focus_neighbor(SIDE_BOTTOM, wheel_h_focus_display->get_path());
+
 		} break;
 
 		case NOTIFICATION_TRANSLATION_CHANGED: {
@@ -146,6 +152,11 @@ void ColorPicker::_notification(int p_what) {
 			if (picker_window != nullptr && picker_window->is_visible()) {
 				picker_window->hide();
 			}
+		} break;
+
+		case NOTIFICATION_FOCUS_ENTER:
+		case NOTIFICATION_FOCUS_EXIT: {
+			cursor_editing = false;
 		} break;
 
 		case NOTIFICATION_INTERNAL_PROCESS: {
@@ -289,6 +300,17 @@ void ColorPicker::set_focus_on_picker_shape() {
 	}
 }
 
+void ColorPicker::_picker_shape_focus_entered() {
+	Input *input = Input::get_singleton();
+	if (!(input->is_action_pressed("ui_up") || input->is_action_pressed("ui_down") || input->is_action_pressed("ui_left") || input->is_action_pressed("ui_right"))) {
+		cursor_editing = true;
+	}
+}
+
+void ColorPicker::_picker_shape_focus_exited() {
+	cursor_editing = false;
+}
+
 void ColorPicker::_update_controls() {
 	int mode_sliders_count = modes[current_mode]->get_slider_count();
 
@@ -321,6 +343,7 @@ void ColorPicker::_update_controls() {
 		alpha_label->hide();
 	}
 
+	bool pre_update_cursor_editing = cursor_editing;
 	switch (_get_actual_shape()) {
 		case SHAPE_HSV_RECTANGLE:
 			w_edit->show();
@@ -393,6 +416,8 @@ void ColorPicker::_update_controls() {
 		default: {
 		}
 	}
+
+	cursor_editing = pre_update_cursor_editing;
 }
 
 void ColorPicker::_set_pick_color(const Color &p_color, bool p_update_sliders) {
@@ -1388,6 +1413,14 @@ void ColorPicker::_hsv_draw(int p_which, Control *c) {
 
 	if (c->has_focus()) {
 		RID ci = c->get_canvas_item();
+		if (!cursor_editing) {
+			Color not_editing_color = theme_cache.focused_not_editing_cursor_color;
+			if (focus_stylebox == theme_cache.picker_focus_circle) {
+				RenderingServer::get_singleton()->canvas_item_add_circle(ci, focus_rect.get_center(), focus_rect.size.y / 2, not_editing_color);
+			} else {
+				RenderingServer::get_singleton()->canvas_item_add_rect(ci, focus_rect, not_editing_color);
+			}
+		}
 		focus_stylebox->draw(ci, focus_rect);
 	}
 }
@@ -1520,7 +1553,23 @@ void ColorPicker::update_uv_cursor(Vector2 &color_change_vector, bool is_echo) {
 	accept_event();
 }
 
+void ColorPicker::update_cursor_editing(const Ref<InputEvent> &p_event, Control *c) {
+	if (p_event->is_action_pressed("ui_accept", false, true)) {
+		cursor_editing = !cursor_editing;
+		accept_event();
+		c->queue_redraw();
+	}
+
+	if (cursor_editing && p_event->is_action_pressed("ui_cancel", false, true)) {
+		cursor_editing = false;
+		accept_event();
+		c->queue_redraw();
+	}
+}
+
 void ColorPicker::_uv_input(const Ref<InputEvent> &p_event, Control *c) {
+	update_cursor_editing(p_event, c);
+
 	Ref<InputEventMouseButton> bev = p_event;
 	PickerShapeType actual_shape = _get_actual_shape();
 
@@ -1632,6 +1681,10 @@ void ColorPicker::_uv_input(const Ref<InputEvent> &p_event, Control *c) {
 		}
 	}
 
+	if (!cursor_editing) {
+		return;
+	}
+
 	Ref<InputEventJoypadMotion> joypadmotion_event = p_event;
 	Ref<InputEventJoypadButton> joypadbutton_event = p_event;
 	bool is_joypad_event = (joypadmotion_event.is_valid() || joypadbutton_event.is_valid());
@@ -1676,6 +1729,8 @@ void ColorPicker::update_w_cursor(float color_change, bool is_echo) {
 }
 
 void ColorPicker::_w_input(const Ref<InputEvent> &p_event) {
+	update_cursor_editing(p_event, w_edit);
+
 	Ref<InputEventMouseButton> bev = p_event;
 	PickerShapeType actual_shape = _get_actual_shape();
 
@@ -1726,6 +1781,10 @@ void ColorPicker::_w_input(const Ref<InputEvent> &p_event) {
 		if (!deferred_mode_enabled) {
 			emit_signal(SNAME("color_changed"), color);
 		}
+	}
+
+	if (!cursor_editing) {
+		return;
 	}
 
 	Ref<InputEventJoypadMotion> joypadmotion_event = p_event;
@@ -2090,6 +2149,7 @@ void ColorPicker::_bind_methods() {
 
 	BIND_THEME_ITEM(Theme::DATA_TYPE_STYLEBOX, ColorPicker, picker_focus_rectangle);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_STYLEBOX, ColorPicker, picker_focus_circle);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_COLOR, ColorPicker, focused_not_editing_cursor_color);
 
 	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, ColorPicker, screen_picker);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, ColorPicker, expanded_arrow);
@@ -2132,6 +2192,8 @@ ColorPicker::ColorPicker() {
 	uv_edit->set_h_size_flags(SIZE_EXPAND_FILL);
 	uv_edit->set_v_size_flags(SIZE_EXPAND_FILL);
 	uv_edit->connect(SceneStringName(draw), callable_mp(this, &ColorPicker::_hsv_draw).bind(0, uv_edit));
+	uv_edit->connect(SceneStringName(focus_entered), callable_mp(this, &ColorPicker::_picker_shape_focus_entered));
+	uv_edit->connect(SceneStringName(focus_exited), callable_mp(this, &ColorPicker::_picker_shape_focus_exited));
 
 	sample_hbc = memnew(HBoxContainer);
 	real_vbox->add_child(sample_hbc);
@@ -2274,12 +2336,16 @@ ColorPicker::ColorPicker() {
 	wheel_h_focus_display->set_focus_mode(FOCUS_ALL);
 	wheel_h_focus_display->connect(SceneStringName(draw), callable_mp(this, &ColorPicker::_hsv_draw).bind(3, wheel_h_focus_display));
 	wheel_h_focus_display->connect(SceneStringName(gui_input), callable_mp(this, &ColorPicker::_uv_input).bind(wheel_h_focus_display));
+	wheel_h_focus_display->connect(SceneStringName(focus_entered), callable_mp(this, &ColorPicker::_picker_shape_focus_entered));
+	wheel_h_focus_display->connect(SceneStringName(focus_exited), callable_mp(this, &ColorPicker::_picker_shape_focus_exited));
 
 	wheel_uv = memnew(Control);
 	wheel_margin->add_child(wheel_uv);
 	wheel_uv->set_focus_mode(FOCUS_ALL);
 	wheel_uv->connect(SceneStringName(gui_input), callable_mp(this, &ColorPicker::_uv_input).bind(wheel_uv));
 	wheel_uv->connect(SceneStringName(draw), callable_mp(this, &ColorPicker::_hsv_draw).bind(0, wheel_uv));
+	wheel_uv->connect(SceneStringName(focus_entered), callable_mp(this, &ColorPicker::_picker_shape_focus_entered));
+	wheel_uv->connect(SceneStringName(focus_exited), callable_mp(this, &ColorPicker::_picker_shape_focus_exited));
 
 	w_edit = memnew(Control);
 	hb_edit->add_child(w_edit);
@@ -2288,6 +2354,8 @@ ColorPicker::ColorPicker() {
 	w_edit->set_v_size_flags(SIZE_EXPAND_FILL);
 	w_edit->connect(SceneStringName(gui_input), callable_mp(this, &ColorPicker::_w_input));
 	w_edit->connect(SceneStringName(draw), callable_mp(this, &ColorPicker::_hsv_draw).bind(1, w_edit));
+	w_edit->connect(SceneStringName(focus_entered), callable_mp(this, &ColorPicker::_picker_shape_focus_entered));
+	w_edit->connect(SceneStringName(focus_exited), callable_mp(this, &ColorPicker::_picker_shape_focus_exited));
 
 	_update_controls();
 	updating = false;
