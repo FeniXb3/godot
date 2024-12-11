@@ -157,7 +157,7 @@ void fill_default_theme(Ref<Theme> &theme, const Ref<Font> &default_font, const 
 	const Ref<StyleBoxFlat> button_pressed = make_flat_stylebox(style_pressed_color);
 	const Ref<StyleBoxFlat> button_disabled = make_flat_stylebox(style_disabled_color);
 	Ref<StyleBoxFlat> focus = make_flat_stylebox(style_focus_color, default_margin, default_margin, default_margin, default_margin, default_corner_radius, false, 2);
-	// Make the focus outline appear to be flush with the buttons it's focusing.
+	// Make the focus outline appear to be flush with the buttons it's focusing, so not draw on top of the content.
 	focus->set_expand_margin_all(Math::round(2 * scale));
 
 	theme->set_stylebox(CoreStringName(normal), "Button", button_normal);
@@ -365,7 +365,7 @@ void fill_default_theme(Ref<Theme> &theme, const Ref<Font> &default_font, const 
 
 	// Button variations
 
-	theme->set_type_variation("FlatButton", "Button");
+	theme->set_type_variation(SceneStringName(FlatButton), "Button");
 	theme->set_type_variation("FlatMenuButton", "MenuButton");
 
 	Ref<StyleBoxEmpty> flat_button_normal = make_empty_stylebox();
@@ -375,10 +375,10 @@ void fill_default_theme(Ref<Theme> &theme, const Ref<Font> &default_font, const 
 	Ref<StyleBoxFlat> flat_button_pressed = button_pressed->duplicate();
 	flat_button_pressed->set_bg_color(style_pressed_color * Color(1, 1, 1, 0.85));
 
-	theme->set_stylebox(CoreStringName(normal), "FlatButton", flat_button_normal);
-	theme->set_stylebox("hover", "FlatButton", flat_button_normal);
-	theme->set_stylebox(SceneStringName(pressed), "FlatButton", flat_button_pressed);
-	theme->set_stylebox("disabled", "FlatButton", flat_button_normal);
+	theme->set_stylebox(CoreStringName(normal), SceneStringName(FlatButton), flat_button_normal);
+	theme->set_stylebox("hover", SceneStringName(FlatButton), flat_button_normal);
+	theme->set_stylebox(SceneStringName(pressed), SceneStringName(FlatButton), flat_button_pressed);
+	theme->set_stylebox("disabled", SceneStringName(FlatButton), flat_button_normal);
 
 	theme->set_stylebox(CoreStringName(normal), "FlatMenuButton", flat_button_normal);
 	theme->set_stylebox("hover", "FlatMenuButton", flat_button_normal);
@@ -659,6 +659,14 @@ void fill_default_theme(Ref<Theme> &theme, const Ref<Font> &default_font, const 
 	empty.instantiate();
 	theme->set_stylebox(SceneStringName(panel), "ScrollContainer", empty);
 
+	const Ref<StyleBoxFlat> focus_style = make_flat_stylebox(style_focus_color);
+	// Make the focus outline appear to be flush with the buttons it's focusing, so not draw on top of the content.
+	sb_expand(focus_style, 4, 4, 4, 4);
+	focus_style->set_border_width_all(Math::round(2 * scale));
+	focus_style->set_draw_center(false);
+	focus_style->set_border_color(style_focus_color);
+	theme->set_stylebox("focus", "ScrollContainer", focus_style);
+
 	// Window
 
 	theme->set_stylebox("embedded_border", "Window", sb_expand(make_flat_stylebox(style_popup_color, 10, 28, 10, 8), 8, 32, 8, 6));
@@ -685,6 +693,9 @@ void fill_default_theme(Ref<Theme> &theme, const Ref<Font> &default_font, const 
 
 	// File Dialog
 
+	theme->set_icon("load", "FileDialog", icons["load"]);
+	theme->set_icon("save", "FileDialog", icons["save"]);
+	theme->set_icon("clear", "FileDialog", icons["clear"]);
 	theme->set_icon("parent_folder", "FileDialog", icons["folder_up"]);
 	theme->set_icon("back_folder", "FileDialog", icons["arrow_left"]);
 	theme->set_icon("forward_folder", "FileDialog", icons["arrow_right"]);
@@ -1033,6 +1044,7 @@ void fill_default_theme(Ref<Theme> &theme, const Ref<Font> &default_font, const 
 	theme->set_stylebox("picker_focus_circle", "ColorPicker", focus_circle);
 	theme->set_color("focused_not_editing_cursor_color", "ColorPicker", Color(1, 1, 1, 0.275f));
 
+	theme->set_icon("menu_option", "ColorPicker", icons["tabs_menu_hl"]);
 	theme->set_icon("folded_arrow", "ColorPicker", icons["arrow_right"]);
 	theme->set_icon("expanded_arrow", "ColorPicker", icons["arrow_down"]);
 	theme->set_icon("screen_picker", "ColorPicker", icons["color_picker_pipette"]);
