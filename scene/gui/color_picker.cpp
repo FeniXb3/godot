@@ -1670,7 +1670,7 @@ void ColorPicker::update_uv_cursor(Vector2 &color_change_vector, bool is_echo) {
 			Vector2 center = wheel_uv->get_size() / 2.0;
 
 			// HACK: It's a hack, as it messes up if I calculate it this way always.
-			if (hsv_keyboard_picker_cursor_position == Vector2i() || Math::is_equal_approx(s, 1)) {
+			if (hsv_keyboard_picker_cursor_position == Vector2i()) {
 				hsv_keyboard_picker_cursor_position.x = center.x + (center.x * Math::cos((actual_shape == SHAPE_OKHSL_CIRCLE ? ok_hsl_h : h) * Math_TAU) * s);
 				hsv_keyboard_picker_cursor_position.y = center.y + (center.y * Math::sin((actual_shape == SHAPE_OKHSL_CIRCLE ? ok_hsl_h : h) * Math_TAU) * s);
 			}
@@ -1691,10 +1691,6 @@ void ColorPicker::update_uv_cursor(Vector2 &color_change_vector, bool is_echo) {
 
 			ok_hsl_h = h;
 			ok_hsl_s = s;
-
-			if (Math::is_equal_approx(s, 1)) {
-				hsv_keyboard_picker_cursor_position = Vector2i();
-			}
 		} else if (actual_shape == SHAPE_HSV_WHEEL) {
 			if (wheel_uv->has_focus()) {
 				s = CLAMP(s + color_change_vector.x / 100.0, 0, 1);
