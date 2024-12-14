@@ -136,6 +136,7 @@ private:
 	const float GAMEPAD_EVENT_REPEAT_RATE_MS = 1.0 / 60;
 	float gamepad_event_delay_ms = DEFAULT_GAMEPAD_EVENT_DELAY_MS;
 	bool cursor_editing = false;
+	int wheel_focus_mode = 0;
 	static const int MODE_BUTTON_COUNT = 3;
 
 	bool slider_theme_modified = true;
@@ -165,7 +166,6 @@ private:
 	Ref<ShaderMaterial> circle_mat;
 	Control *wheel = nullptr;
 	Control *wheel_uv = nullptr;
-	Control *wheel_h_focus_display = nullptr;
 	TextureRect *sample = nullptr;
 	GridContainer *preset_container = nullptr;
 	HBoxContainer *recent_preset_hbc = nullptr;
