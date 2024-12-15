@@ -132,8 +132,8 @@ private:
 	float echo_multiplier_step = 1.1;
 	bool rotate_next_echo_event = false;
 
-	const float DEFAULT_GAMEPAD_EVENT_DELAY_MS = 1.0 / 60;
-	const float GAMEPAD_EVENT_REPEAT_RATE_MS = 1.0 / 60;
+	const float DEFAULT_GAMEPAD_EVENT_DELAY_MS = 1.0 / 2;
+	const float GAMEPAD_EVENT_REPEAT_RATE_MS = 1.0 / 30;
 	float gamepad_event_delay_ms = DEFAULT_GAMEPAD_EVENT_DELAY_MS;
 	bool cursor_editing = false;
 	int wheel_focus_mode = 0;

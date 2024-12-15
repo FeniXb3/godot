@@ -198,7 +198,10 @@ void ColorPicker::_notification(int p_what) {
 			gamepad_event_delay_ms -= get_process_delta_time();
 			if (gamepad_event_delay_ms <= 0) {
 				gamepad_event_delay_ms = GAMEPAD_EVENT_REPEAT_RATE_MS + gamepad_event_delay_ms;
-				Vector2 color_change_vector = input->get_vector("ui_left", "ui_right", "ui_up", "ui_down");
+				// Treat any input from joypad axis as -1, 0, or 1, as the value is added to Vector2i and would be lost
+				Vector2 color_change_vector = Vector2(
+						input->is_action_pressed("ui_right") - input->is_action_pressed("ui_left"),
+						input->is_action_pressed("ui_down") - input->is_action_pressed("ui_up"));
 				if (is_picker_focused) {
 					update_uv_cursor(color_change_vector, true);
 				} else if (w_edit->has_focus()) {
@@ -1889,10 +1892,18 @@ void ColorPicker::_uv_input(const Ref<InputEvent> &p_event, Control *c) {
 			p_event->is_action_pressed("ui_up", true) ||
 			p_event->is_action_pressed("ui_down", true)) {
 		if (is_joypad_event) {
+			// Make sure moving joypad axis further in the same direction is not handled here, as NOTIFICATION_INTERNAL_PROCESS will handle it
+			if (is_processing_internal()) {
+				accept_event();
+				return;
+			}
 			set_process_internal(true);
 		}
 
-		Vector2 color_change_vector = Input::get_singleton()->get_vector("ui_left", "ui_right", "ui_up", "ui_down");
+		// Treat any input from joypad axis as -1, 0, or 1, as the value is added to Vector2i and would be lost
+		Vector2 color_change_vector = Vector2(
+				p_event->is_action_pressed("ui_right", true) - p_event->is_action_pressed("ui_left", true),
+				p_event->is_action_pressed("ui_down", true) - p_event->is_action_pressed("ui_up", true));
 		update_uv_cursor(color_change_vector, is_echo);
 	}
 }
