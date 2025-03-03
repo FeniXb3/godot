@@ -136,6 +136,8 @@ private:
 	float gamepad_event_delay_ms = DEFAULT_GAMEPAD_EVENT_DELAY_MS;
 	bool cursor_editing = false;
 	int wheel_focus_mode = 0;
+	Vector2 last_mouse_position;
+	Vector2 ofs;
 	static const int MODE_BUTTON_COUNT = 3;
 	const float WHEEL_RADIUS = 0.42;
 
@@ -330,6 +332,8 @@ private:
 	void _options_menu_cbk(int p_which);
 	void _block_input_on_popup_show();
 	void _enable_input_on_popup_hide();
+	void _handle_picker_popup_hidden();
+	void _calculate_ofs(Vector2 p_mouse_position);
 
 	// Legacy color picking.
 	void _pick_button_pressed_legacy();
