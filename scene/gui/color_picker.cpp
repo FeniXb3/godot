@@ -195,8 +195,9 @@ void ColorPicker::_notification(int p_what) {
 				}
 				return;
 			}
+
 			DisplayServer *ds = DisplayServer::get_singleton();
-			Vector2 ofs = ds->mouse_get_position();
+			_calculate_ofs(ds->mouse_get_position());
 
 			Color c = DisplayServer::get_singleton()->screen_get_pixel(ofs);
 
@@ -349,6 +350,35 @@ void ColorPicker::_picker_shape_focus_exited() {
 		wheel_uv->queue_redraw();
 	}
 	wheel_focus_mode = 0;
+}
+
+void ColorPicker::_calculate_ofs(Vector2 p_mouse_position) {
+	if (!p_mouse_position.is_equal_approx(last_mouse_position) && p_mouse_position > Vector2()) {
+		ofs = p_mouse_position;
+		last_mouse_position = p_mouse_position;
+	}
+
+	Input *input = Input::get_singleton();
+
+	if (input->is_action_just_released("ui_left") ||
+			input->is_action_just_released("ui_right") ||
+			input->is_action_just_released("ui_up") ||
+			input->is_action_just_released("ui_down")) {
+		// gamepad_event_delay_ms = DEFAULT_GAMEPAD_EVENT_DELAY_MS;
+		echo_multiplier = 1;
+		accept_event();
+		return;
+	}
+
+	// gamepad_event_delay_ms -= get_process_delta_time();
+	// if (gamepad_event_delay_ms <= 0) {
+	// 	gamepad_event_delay_ms = GAMEPAD_EVENT_REPEAT_RATE_MS + gamepad_event_delay_ms;
+	// }
+	if (input->is_action_pressed("ui_up") || input->is_action_pressed("ui_down") || input->is_action_pressed("ui_left") || input->is_action_pressed("ui_right")) {
+		accept_event();
+		echo_multiplier = CLAMP(echo_multiplier * echo_multiplier_step, 1, 25);
+		ofs += echo_multiplier * input->get_vector("ui_left", "ui_right", "ui_up", "ui_down");
+	}
 }
 
 void ColorPicker::_update_controls() {
@@ -2118,6 +2148,8 @@ void ColorPicker::_pick_button_pressed() {
 		}
 		picker_window->connect(SceneStringName(visibility_changed), callable_mp(this, &ColorPicker::_pick_finished));
 		picker_window->connect(SceneStringName(window_input), callable_mp(this, &ColorPicker::_target_gui_input));
+		picker_window->connect("about_to_popup", callable_mp(this, &ColorPicker::_block_input_on_popup_show));
+		picker_window->connect(SNAME("popup_hide"), callable_mp(this, &ColorPicker::_enable_input_on_popup_hide));
 
 		picker_preview = memnew(Panel);
 		picker_preview->set_mouse_filter(MOUSE_FILTER_IGNORE);
@@ -2159,6 +2191,18 @@ void ColorPicker::_pick_button_pressed() {
 }
 
 void ColorPicker::_target_gui_input(const Ref<InputEvent> &p_event) {
+	if (p_event->is_action_pressed(SNAME("ui_accept"), false, true)) {
+		picker_window->hide();
+		_pick_finished();
+		return;
+	} else if (p_event->is_action_pressed(SNAME("ui_accept"), false, true)) {
+		set_pick_color(pre_picking_color); // Cancel.
+		is_picking_color = false;
+		set_process_internal(false);
+		picker_window->hide();
+		return;
+	}
+
 	const Ref<InputEventMouseButton> mouse_event = p_event;
 	if (mouse_event.is_null()) {
 		return;
@@ -2301,6 +2345,11 @@ void ColorPicker::_enable_input_on_popup_hide() {
 	}
 }
 
+void ColorPicker::_handle_picker_popup_hidden() {
+	_enable_input_on_popup_hide();
+	last_mouse_position = Vector2();
+}
+
 void ColorPicker::_pick_button_pressed_legacy() {
 	if (!is_inside_tree()) {
 		return;
@@ -2318,8 +2367,11 @@ void ColorPicker::_pick_button_pressed_legacy() {
 		picker_texture_rect->set_anchors_preset(Control::PRESET_FULL_RECT);
 		picker_texture_rect->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
 		picker_texture_rect->set_default_cursor_shape(Control::CURSOR_CROSS);
+		picker_texture_rect->set_focus_mode(FOCUS_ALL);
 		picker_window->add_child(picker_texture_rect);
 		picker_texture_rect->connect(SceneStringName(gui_input), callable_mp(this, &ColorPicker::_picker_texture_input));
+		picker_window->connect("about_to_popup", callable_mp(this, &ColorPicker::_block_input_on_popup_show));
+		picker_window->connect(SNAME("popup_hide"), callable_mp(this, &ColorPicker::_handle_picker_popup_hidden));
 
 		picker_preview = memnew(Panel);
 		picker_preview->set_mouse_filter(MOUSE_FILTER_IGNORE);
@@ -2353,7 +2405,11 @@ void ColorPicker::_pick_button_pressed_legacy() {
 		picker_window->set_position(Point2i());
 		picker_texture_rect->set_texture(tx);
 
-		Vector2 ofs = picker_window->get_mouse_position();
+		// Vector2 ofs = picker_window->get_mouse_position();
+		Input *input = Input::get_singleton();
+		Vector2 initial_position = input->is_action_just_released("ui_accept") ? btn_pick->get_global_position() : picker_window->get_mouse_position();
+		_calculate_ofs(initial_position);
+		ofs = ofs.clamp(Vector2(), screen_rect.get_size());
 		picker_preview->set_position(ofs - Vector2(28, 28));
 
 		Vector2 scale = screen_rect.size / tx->get_image()->get_size();
@@ -2391,7 +2447,8 @@ void ColorPicker::_pick_button_pressed_legacy() {
 		Ref<ImageTexture> tx = ImageTexture::create_from_image(target_image);
 		picker_texture_rect->set_texture(tx);
 
-		Vector2 ofs = screen_rect.position - DisplayServer::get_singleton()->mouse_get_position();
+		// Vector2 ofs = screen_rect.position - DisplayServer::get_singleton()->mouse_get_position();
+		_calculate_ofs(screen_rect.position - DisplayServer::get_singleton()->mouse_get_position());
 		picker_preview->set_position(ofs - Vector2(28, 28));
 
 		Ref<AtlasTexture> atlas;
@@ -2402,6 +2459,7 @@ void ColorPicker::_pick_button_pressed_legacy() {
 	}
 
 	picker_window->set_size(screen_rect.size);
+	picker_texture_rect->grab_focus();
 	picker_window->popup();
 }
 
@@ -2411,29 +2469,48 @@ void ColorPicker::_picker_texture_input(const Ref<InputEvent> &p_event) {
 	}
 
 	Ref<InputEventMouseButton> bev = p_event;
-	if (bev.is_valid() && bev->get_button_index() == MouseButton::LEFT && !bev->is_pressed()) {
+	bool is_mouse_accept = bev.is_valid() && bev->get_button_index() == MouseButton::LEFT && !bev->is_pressed();
+	bool is_action_accept = p_event->is_action_pressed(SNAME("ui_accept"), false, true);
+	if (is_mouse_accept || is_action_accept) {
 		set_pick_color(picker_color);
 		emit_signal(SNAME("color_changed"), color);
 		picker_window->hide();
+		accept_event();
+		last_mouse_position = Vector2i();
+		return;
 	}
 
-	Ref<InputEventMouseMotion> mev = p_event;
-	if (mev.is_valid()) {
-		Ref<Image> img = picker_texture_rect->get_texture()->get_image();
-		if (img.is_valid() && !img->is_empty()) {
-			Vector2 ofs = mev->get_position();
-			picker_preview->set_position(ofs - Vector2(28, 28));
-			Vector2 scale = picker_texture_rect->get_size() / img->get_size();
-			ofs /= scale;
-			picker_color = img->get_pixel(ofs.x, ofs.y);
-			picker_preview_style_box_color->set_bg_color(picker_color);
-			picker_preview_style_box->set_bg_color(picker_color.get_luminance() < 0.5 ? Color(1.0f, 1.0f, 1.0f) : Color(0.0f, 0.0f, 0.0f));
+	Vector2 last_ofs = ofs;
+	Ref<Image> img = picker_texture_rect->get_texture()->get_image();
+	if (img.is_valid() && !img->is_empty()) {
+		Ref<InputEventMouseMotion> mev = p_event;
+		if (mev.is_valid()) {
+			// Vector2 ofs = mev->get_position();
+			_calculate_ofs(mev->get_position());
+		} else {
+			Vector2 initial_position = p_event->is_action_released("ui_accept") ? btn_pick->get_global_position() : last_mouse_position;
+			_calculate_ofs(initial_position);
 
-			Ref<AtlasTexture> atlas = picker_texture_zoom->get_texture();
-			if (atlas.is_valid()) {
-				atlas->set_region(Rect2i(ofs.x - 8, ofs.y - 8, 17, 17));
-			}
+			// _calculate_ofs(last_mouse_position);
+			Vector2 max_position = picker_window->get_embedder()->get_visible_rect().get_size() - Vector2(1, 1);
+			ofs = ofs.clamp(Vector2(), max_position);
+			accept_event();
 		}
+	}
+	if (last_ofs.is_equal_approx(ofs)) {
+		return;
+	}
+
+	picker_preview->set_position(ofs - Vector2(28, 28));
+	Vector2 scale = picker_texture_rect->get_size() / img->get_size();
+	ofs /= scale;
+	picker_color = img->get_pixel(ofs.x, ofs.y);
+	picker_preview_style_box_color->set_bg_color(picker_color);
+	picker_preview_style_box->set_bg_color(picker_color.get_luminance() < 0.5 ? Color(1.0f, 1.0f, 1.0f) : Color(0.0f, 0.0f, 0.0f));
+
+	Ref<AtlasTexture> atlas = picker_texture_zoom->get_texture();
+	if (atlas.is_valid()) {
+		atlas->set_region(Rect2i(ofs.x - 8, ofs.y - 8, 17, 17));
 	}
 }
 
